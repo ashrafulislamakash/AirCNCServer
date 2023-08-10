@@ -76,6 +76,14 @@ async function run() {
       res.send(result);
     });
 
+    // Save a booking in database
+    app.post("/bookings", async (req, res) => {
+      const booking = req.body;
+      console.log(booking);
+      const result = await bookingsCollection.insertOne(booking);
+      res.send(result);
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(

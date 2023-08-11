@@ -86,7 +86,6 @@ async function run() {
       res.send(result);
     });
 
-
     // Save a booking in database
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
@@ -118,6 +117,14 @@ async function run() {
       }
       const query = { "guest.email": email };
       const result = await bookingsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // Get bookings for guest
+    app.get("/bookings/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await bookingsCollection.deleteOne(query);
       res.send(result);
     });
 

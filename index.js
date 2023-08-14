@@ -38,6 +38,12 @@ async function run() {
     const verifyJWT = (req, res, next) => {
       const authorization = req.headers.authorization;
       //token verify
+
+      if (!authorization) {
+        return res
+          .status(401)
+          .send({ error: true, message: "Unauthorized Access" });
+      }
       const token = authorization.split(" ")[1];
       jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
@@ -98,10 +104,16 @@ async function run() {
       res.send(result);
     });
 
-    // Get a single room
-    app.get("/rooms/:email", async (req, res) => {
+    // Get a single for host
+    app.get("/rooms/:email", verifyJWT, async (req, res) => {
+      const decodedEmail = req.decoded.email;
       const email = req.params.email;
       const query = { "host.email": email };
+      if (email !== decodedEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "Forbidded Access" });
+      }
       const result = await roomsCollection.find(query).toArray();
 
       res.send(result);

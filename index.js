@@ -5,7 +5,7 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
-
+const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
 // middleware
 const corsOptions = {
   origin: "*",
@@ -104,7 +104,7 @@ async function run() {
       res.send(result);
     });
 
-    // Get a single for host
+    // Get all  for host
     app.get("/rooms/:email", verifyJWT, async (req, res) => {
       const decodedEmail = req.decoded.email;
       const email = req.params.email;
@@ -112,7 +112,7 @@ async function run() {
       if (email !== decodedEmail) {
         return res
           .status(403)
-          .send({ error: true, message: "Forbidded Access" });
+          .send({ error: true, message: "Forbidden Access" });
       }
       const result = await roomsCollection.find(query).toArray();
 
@@ -172,6 +172,22 @@ async function run() {
       const query = { host: email };
       const result = await bookingsCollection.find(query).toArray();
       res.send(result);
+    });
+
+    // create payment intent
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      const amount = parseFloat(price) * 100;
+      if (!price) return;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
     });
 
     // Save a booking in database

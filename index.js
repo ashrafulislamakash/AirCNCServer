@@ -6,6 +6,8 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
+const nodemailer = require("nodemailer");
+
 // middleware
 const corsOptions = {
   origin: "*",
@@ -28,33 +30,68 @@ const client = new MongoClient(uri, {
   },
 });
 
+//validate jwt
+const verifyJWT = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  //token verify
+
+  if (!authorization) {
+    return res
+      .status(401)
+      .send({ error: true, message: "Unauthorized Access" });
+  }
+  const token = authorization.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res
+        .status(401)
+        .send({ error: true, message: "Unauthorized Access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
+/// Send Email
+const sendMail = (emailData, emailAddress) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL,
+      pass: process.env.PASS,
+    },
+  });
+
+  // verify connection configuration
+  transporter.verify(function (error, success) {
+    if (error) {
+      console.log(error);
+    } else {
+      console.log("Server is ready to take our messages");
+    }
+  });
+
+  const mailOptions = {
+    from: process.env.EMAIL,
+    to: emailAddress,
+    subject: emailData?.subject,
+    html: `<p>${emailData?.message}</p>`,
+  };
+
+  transporter.sendMail(mailOptions, function (error, info) {
+    if (error) {
+      console.log(error);
+    } else {
+      console.log("Email sent: " + info.response);
+    }
+  });
+};
+
 async function run() {
   try {
     const usersCollection = client.db("aircncDb").collection("users");
     const roomsCollection = client.db("aircncDb").collection("rooms");
     const bookingsCollection = client.db("aircncDb").collection("bookings");
-
-    //validate jwt
-    const verifyJWT = (req, res, next) => {
-      const authorization = req.headers.authorization;
-      //token verify
-
-      if (!authorization) {
-        return res
-          .status(401)
-          .send({ error: true, message: "Unauthorized Access" });
-      }
-      const token = authorization.split(" ")[1];
-      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        if (err) {
-          return res
-            .status(401)
-            .send({ error: true, message: "Unauthorized Access" });
-        }
-        req.decoded = decoded;
-        next();
-      });
-    };
 
     //Generate jwt
     app.post("/jwt", (req, res) => {
@@ -136,6 +173,25 @@ async function run() {
       res.send(result);
     });
 
+    // Update A room
+    app.put("/rooms/:id", verifyJWT, async (req, res) => {
+      const room = req.body;
+      console.log(room);
+
+      const filter = { _id: new ObjectId(req.params.id) };
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: room,
+      };
+      const result = await roomsCollection.updateOne(
+        filter,
+        updateDoc,
+        options
+      );
+      res.send(result);
+    });
+
+    
     // update room booking status
     app.patch("/rooms/status/:id", async (req, res) => {
       const id = req.params.id;
@@ -195,6 +251,25 @@ async function run() {
       const booking = req.body;
 
       const result = await bookingsCollection.insertOne(booking);
+      if (result.insertedId) {
+        // Send confirmation email to guest
+        sendMail(
+          {
+            subject: "Booking Successful!",
+            message: `Booking Id: ${result?.insertedId}, TransactionId: ${booking.transactionId}`,
+          },
+          booking?.guest?.email
+        );
+        // Send confirmation email to host
+        sendMail(
+          {
+            subject: "Your room got booked!",
+            message: `Booking Id: ${result?.insertedId}, TransactionId: ${booking.transactionId}. Check dashboard for more info`,
+          },
+          booking?.host
+        );
+      }
+
       res.send(result);
     });
 
